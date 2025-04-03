@@ -10,6 +10,8 @@ export class Start extends Phaser.Scene {
         this.score = 0;
         this.scoreText = null;
         this.gameOver = false;
+        this.playerName = ''; // Store player name
+        this.gameStarted = false; // Track if the game has started
     }
 
     preload() {
@@ -22,11 +24,11 @@ export class Start extends Phaser.Scene {
 
     create() {
         this.background = this.add.tileSprite(640, 360, 1280, 720, 'background');
-
         const logo = this.add.image(640, 200, 'logo');
 
         this.ship = this.physics.add.sprite(150, 360, 'ship');
         this.ship.setCollideWorldBounds(true);
+        this.ship.setOrigin(0, 0.5);
 
         this.ship.anims.create({
             key: 'fly',
@@ -37,35 +39,46 @@ export class Start extends Phaser.Scene {
 
         this.ship.play('fly');
 
-        this.tweens.add({
-            targets: this.ship,
-            y: 380,
-            duration: 1500,
-            ease: 'Sine.inOut',
-            yoyo: true,
-            loop: -1,
-        });
-
         this.obstacles = this.physics.add.group();
 
+        //  Overlap wasn't precise enough, switch to collider
+        this.physics.add.collider(this.ship, this.obstacles, this.hitObstacle, null, this);
+
+        this.winPoint = this.physics.add.image(1200, Phaser.Math.Between(100, 600), 'winPoint');
+        this.winPoint.setImmovable(true);
+        this.winPoint.setScale(0.5);
+
+        this.physics.add.overlap(this.ship, this.winPoint, this.winGame, null, this);
+
+        // Display score text, initially with empty name
+        this.scoreText = this.add.text(10, 10, `Name: ${this.playerName}  Score: 0`, { fontSize: '32px', fill: '#fff' });
+
+        // Prompt for player name at the start of the game
+        this.playerName = prompt("Please enter your name:");
+        if (this.playerName && this.playerName.trim() !== "") {
+            this.gameStarted = true;
+            this.scoreText.setText(`Name: ${this.playerName}  Score: 0`);
+            this.startGame(); // Start the game after getting the name
+        } else {
+            //handle the scenario where the player doesn't enter a name
+            this.gameOver = true;
+            this.add.text(640, 360, 'Game Over: Name not entered!', { fontSize: '32px', fill: '#fff' }).setOrigin(0.5);
+        }
+    }
+
+    startGame() {
+        // Start the obstacle timer
         this.obstacleTimer = this.time.addEvent({
             delay: this.obstacleSpawnRate,
             callback: this.spawnObstacle,
             callbackScope: this,
             loop: true,
         });
-
-        this.physics.add.overlap(this.ship, this.obstacles, this.hitObstacle, null, this);
-
-        this.winPoint = this.physics.add.image(1200, Phaser.Math.Between(100, 600), 'winPoint');
-        this.winPoint.setImmovable(true);
-        this.winPoint.setScale(0.5);
-        this.physics.add.overlap(this.ship, this.winPoint, this.winGame, null, this);
-
-        this.scoreText = this.add.text(10, 10, 'Score: 0', { fontSize: '32px', fill: '#fff' });
     }
 
     update() {
+        if (!this.gameStarted) return; // Only update if the game has started
+
         if (this.gameOver) return;
 
         this.background.tilePositionX += 2;
@@ -75,7 +88,7 @@ export class Start extends Phaser.Scene {
             if (obstacle.x < -50) {
                 obstacle.destroy();
                 this.score += 1;
-                this.scoreText.setText('Score: ' + this.score);
+                this.scoreText.setText(`Name: ${this.playerName}  Score: ${this.score}`); // Include name in score display
             }
         });
 
@@ -91,17 +104,19 @@ export class Start extends Phaser.Scene {
 
     spawnObstacle() {
         if (this.gameOver) return;
+
         const obstacleY = Phaser.Math.Between(50, 850);
         const obstacle = this.obstacles.create(1300, obstacleY, 'obstacle');
         obstacle.setVelocityX(-this.obstacleSpeed * 60);
         obstacle.setImmovable(true);
-        obstacle.setScale(0.5); //set obstacle size
+        obstacle.setScale(0.5);
     }
 
     hitObstacle(ship, obstacle) {
         this.gameOver = true;
         this.physics.pause();
         ship.setTint(0xff0000);
+
         this.add.text(640, 360, 'Game Over!', { fontSize: '64px', fill: '#f00' }).setOrigin(0.5);
         this.obstacleTimer.remove();
     }
@@ -109,6 +124,7 @@ export class Start extends Phaser.Scene {
     winGame(ship, winPoint) {
         this.gameOver = true;
         this.physics.pause();
+
         this.add.text(640, 360, 'You Win!', { fontSize: '64px', fill: '#0f0' }).setOrigin(0.5);
         this.obstacleTimer.remove();
     }
