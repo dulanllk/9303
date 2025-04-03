@@ -1,7 +1,10 @@
 export class Start extends Phaser.Scene {
     constructor() {
         super('Start');
-        this.obstacleSpeed = 1;
+        this.playerName = '';
+        this.gameStarted = false;
+        this.gameOver = false;
+        this.obstacleSpeed = 5;
         this.obstacleSpawnRate = 1500;
         this.obstacleTimer = null;
         this.obstacles = null;
@@ -9,45 +12,125 @@ export class Start extends Phaser.Scene {
         this.winPoint = null;
         this.score = 0;
         this.scoreText = null;
-        this.gameOver = false;
+        this.gameDuration = 0;
+        this.elapsedTime = 0;
+        this.timerText = null;
+        this.randomNumberText = null;
+        this.cursors = null;
     }
 
     preload() {
         this.load.image('background', 'assets/space.png');
         this.load.image('logo', 'assets/phaser.png');
         this.load.spritesheet('ship', 'assets/spaceship.png', { frameWidth: 176, frameHeight: 96 });
-        this.load.image('obstacle', 'assets/obstacle.png', { frameWidth: 50, frameHeight: 50 });
+        this.load.image('obstacle', 'assets/obstacle.png');
         this.load.image('winPoint', 'assets/flag.png');
     }
 
     create() {
-        this.background = this.add.tileSprite(640, 360, 1280, 720, 'background');
-
+        this.background = this.add.tileSprite(640, 360, 1280, 720, 'background').setVisible(false);
         const logo = this.add.image(640, 200, 'logo');
 
-        this.ship = this.physics.add.sprite(150, 360, 'ship');
+        this.ship = this.physics.add.sprite(150, 360, 'ship').setVisible(false);
         this.ship.setCollideWorldBounds(true);
-
+        this.ship.setOrigin(0, 0.5);
         this.ship.anims.create({
             key: 'fly',
             frames: this.anims.generateFrameNumbers('ship', { start: 0, end: 2 }),
             frameRate: 15,
             repeat: -1,
         });
-
         this.ship.play('fly');
 
-        this.tweens.add({
-            targets: this.ship,
-            y: 380,
-            duration: 1500,
-            ease: 'Sine.inOut',
-            yoyo: true,
-            loop: -1,
+        this.obstacles = this.physics.add.group();
+        this.winPoint = this.physics.add.image(1200, Phaser.Math.Between(100, 600), 'winPoint').setVisible(false);
+        this.winPoint.setImmovable(true);
+        this.winPoint.setScale(0.5);
+
+        this.physics.add.overlap(this.ship, this.winPoint, this.winGame, null, this);
+        this.physics.add.overlap(this.ship, this.obstacles, this.hitObstacle, null, this);
+
+        this.scoreText = this.add.text(10, 10, `Name: ${this.playerName} Score: 0`, { fontSize: '32px', fill: '#fff' }).setVisible(false);
+        this.timerText = this.add.text(10, 50, `Time: ${this.elapsedTime}s`, { fontSize: '32px', fill: '#fff' }).setVisible(false);
+        this.randomNumberText = this.add.text(10, 90, `Game Duration: `, { fontSize: '32px', fill: '#fff' }).setVisible(false);
+
+        this.cursors = this.input.keyboard.createCursorKeys();
+
+        this.loginButton = this.add.text(100, 600, 'Login', { fontSize: '32px', fill: '#fff' }).setInteractive();
+        this.registerButton = this.add.text(250, 600, 'Register', { fontSize: '32px', fill: '#fff' }).setInteractive();
+
+        this.loginButton.on('pointerdown', () => this.showLogin());
+        this.registerButton.on('pointerdown', () => this.showRegister());
+
+        this.errorMessageText = this.add.text(640, 500, '', {
+            fontSize: '32px',
+            fill: '#f00',
+        }).setOrigin(0.5).setVisible(false);
+    }
+
+    update() {
+        if (this.gameOver || !this.gameStarted) return;
+        this.background.tilePositionX += 2;
+        this.obstacles.getChildren().forEach((obstacle) => {
+            obstacle.x -= this.obstacleSpeed;
+            if (obstacle.x < -50) {
+                obstacle.destroy();
+                this.score += 1;
+                this.scoreText.setText(`Name: ${this.playerName} Score: ${this.score}`);
+            }
         });
 
-        this.obstacles = this.physics.add.group();
+        if (this.cursors.up.isDown) {
+            this.ship.setVelocityY(-200);
+        } else if (this.cursors.down.isDown) {
+            this.ship.setVelocityY(200);
+        } else {
+            this.ship.setVelocityY(0);
+        }
 
+        if (this.cursors.left.isDown) {
+            this.ship.setVelocityX(-200);
+        } else if (this.cursors.right.isDown) {
+            this.ship.setVelocityX(200);
+        } else {
+            this.ship.setVelocityX(0);
+        }
+    }
+
+    getGameDuration() {
+        const bananaApiUrl = 'https://marcconrad.com/uob/banana/api.php';
+        fetch(bananaApiUrl)
+            .then(response => response.text())
+            .then(text => {
+                console.log("Banana API Data:", text);
+                const randomNumber = parseInt(text.match(/\d+/));
+                if (!isNaN(randomNumber) && randomNumber >= 5 && randomNumber <= 9) {
+                    this.gameDuration = randomNumber * 4;
+                    this.randomNumberText.setText(`Game Duration: ${this.gameDuration}`);
+                    this.startGameLogic();
+                } else {
+                    this.getGameDuration();
+                }
+            })
+            .catch(error => {
+                this.gameOver = true;
+                this.add.text(640, 360, `Error fetching data: ${error}`, { fontSize: '24px', fill: '#fff' }).setOrigin(0.5);
+            });
+    }
+
+    startGame() {
+        this.loginButton.setVisible(false);
+        this.registerButton.setVisible(false);
+        this.background.setVisible(true);
+        this.ship.setVisible(true);
+        this.winPoint.setVisible(true);
+        this.scoreText.setVisible(true);
+        this.timerText.setVisible(true);
+        this.randomNumberText.setVisible(true);
+        this.getGameDuration();
+    }
+
+    startGameLogic() {
         this.obstacleTimer = this.time.addEvent({
             delay: this.obstacleSpawnRate,
             callback: this.spawnObstacle,
@@ -55,61 +138,141 @@ export class Start extends Phaser.Scene {
             loop: true,
         });
 
-        this.physics.add.overlap(this.ship, this.obstacles, this.hitObstacle, null, this);
-
-        this.winPoint = this.physics.add.image(1200, Phaser.Math.Between(100, 600), 'winPoint');
-        this.winPoint.setImmovable(true);
-        this.winPoint.setScale(0.5);
-        this.physics.add.overlap(this.ship, this.winPoint, this.winGame, null, this);
-
-        this.scoreText = this.add.text(10, 10, 'Score: 0', { fontSize: '32px', fill: '#fff' });
+        this.intervalId = setInterval(() => {
+            this.elapsedTime++;
+            this.timerText.setText(`Time: ${this.elapsedTime}s`);
+            if (this.elapsedTime >= this.gameDuration) {
+                this.handleGameOver();
+            }
+        }, 1000);
     }
 
-    update() {
-        if (this.gameOver) return;
-
-        this.background.tilePositionX += 2;
-
-        this.obstacles.getChildren().forEach((obstacle) => {
-            obstacle.x -= this.obstacleSpeed;
-            if (obstacle.x < -50) {
-                obstacle.destroy();
-                this.score += 1;
-                this.scoreText.setText('Score: ' + this.score);
-            }
-        });
-
-        const cursors = this.input.keyboard.createCursorKeys();
-        if (cursors.up.isDown) {
-            this.ship.setVelocityY(-200);
-        } else if (cursors.down.isDown) {
-            this.ship.setVelocityY(200);
-        } else {
-            this.ship.setVelocityY(0);
-        }
+    handleGameOver() {
+        this.gameOver = true;
+        this.physics.pause();
+        this.add.text(640, 360, 'Game Over! Time Expires', { fontSize: '32px', fill: '#fff' }).setOrigin(0.5);
+        clearInterval(this.intervalId);
+        this.obstacleTimer.remove();
+        this.saveScore();
     }
 
     spawnObstacle() {
         if (this.gameOver) return;
-        const obstacleY = Phaser.Math.Between(50, 850);
+        const obstacleY = Phaser.Math.Between(50, 600);
         const obstacle = this.obstacles.create(1300, obstacleY, 'obstacle');
-        obstacle.setVelocityX(-this.obstacleSpeed * 60);
+        obstacle.setVelocityX(-this.obstacleSpeed);
         obstacle.setImmovable(true);
-        obstacle.setScale(0.5); //set obstacle size
+        obstacle.setScale(0.5);
     }
 
-    hitObstacle(ship, obstacle) {
+    hitObstacle() {
         this.gameOver = true;
         this.physics.pause();
-        ship.setTint(0xff0000);
-        this.add.text(640, 360, 'Game Over!', { fontSize: '64px', fill: '#f00' }).setOrigin(0.5);
+        this.ship.setTint(0xff0000);
+        this.add.text(640, 360, 'Game Over! You hit an obstacle!', { fontSize: '64px', fill: '#f00' }).setOrigin(0.5);
+        clearInterval(this.intervalId);
         this.obstacleTimer.remove();
+        this.saveScore();
     }
 
-    winGame(ship, winPoint) {
+    winGame() {
         this.gameOver = true;
         this.physics.pause();
         this.add.text(640, 360, 'You Win!', { fontSize: '64px', fill: '#0f0' }).setOrigin(0.5);
+        clearInterval(this.intervalId);
         this.obstacleTimer.remove();
+        this.saveScore(); // Save score when the player wins
+    }
+
+    showLogin() {
+        const name = prompt('Enter your name:');
+        const password = prompt('Enter your password:');
+        fetch('http://localhost:3000/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, password }),
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.auth) {
+                this.playerName = name;
+                this.gameStarted = true;
+                if (data.role === 'admin') {
+                    this.showAdminPanel();
+                } else {
+                    this.startGame();
+                }
+                this.errorMessageText.setVisible(false);
+            } else {
+                    if (data.message === 'User not found.') {
+                        this.errorMessageText.setText('Invalid name.').setVisible(true);
+                    } else if (data.message === 'Invalid password.') {
+                        this.errorMessageText.setText('Invalid password.').setVisible(true);
+                    } else {
+                        this.errorMessageText.setText(data.message).setVisible(true);
+                    }
+            }
+        })
+        .catch(error => {
+            this.errorMessageText.setText('An error occurred during login. Please try again.').setVisible(true);
+        });
+    }
+
+    showRegister() {
+        const name = prompt('Enter your name:');
+        const password = prompt('Enter your password:');
+        fetch('http://localhost:3000/register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, password }),
+        })
+        .then(response => response.json())
+        .then(data => {
+            alert(data.message);
+            if(data.message === "User registered successfully."){
+                this.showLogin();
+            }
+        });
+    }
+
+    saveScore() {
+        const name = this.playerName;
+        const score = this.score;
+
+        fetch('http://localhost:3000/saveScore', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, score }),
+        })
+        .then(response => response.json())
+        .then(data => {
+            console.log(data.message);
+        })
+        .catch(error => {
+            console.error('Error saving score:', error);
+        });
+    }
+
+    showAdminPanel() {
+        this.scene.start('AdminScene');
+    }
+
+    fetchTopScores() {
+        fetch('http://localhost:3000/topScores')
+            .then(response => response.json())
+            .then(scores => {
+                let y = 100;
+                this.add.text(100, y-30, 'Top Scores:', { fontSize: '24px', fill: '#fff' });
+                scores.forEach(score => {
+                    this.add.text(100, y, `${score.user}: ${score.score}`, { fontSize: '18px', fill: '#fff' });
+                    y += 20;
+                });
+            })
+            .catch(error => console.error('Error fetching top scores:', error));
+    }
+
+    logout() {
+        this.logoutButton.destroy();
+        this.scene.restart();
     }
 }
