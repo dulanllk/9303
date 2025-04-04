@@ -1,7 +1,11 @@
+// /Project_Folder/src/scenes/Start.js
 export class Start extends Phaser.Scene {
     constructor() {
         super('Start');
-        this.obstacleSpeed = 200;
+        this.playerName = '';
+        this.gameStarted = false;
+        this.gameOver = false;
+        this.obstacleSpeed = 5;
         this.obstacleSpawnRate = 1500;
         this.obstacleTimer = null;
         this.obstacles = null;
@@ -9,9 +13,6 @@ export class Start extends Phaser.Scene {
         this.winPoint = null;
         this.score = 0;
         this.scoreText = null;
-        this.gameOver = false;
-        this.playerName = '';
-        this.gameStarted = false;
         this.gameDuration = 0;
         this.elapsedTime = 0;
         this.timerText = null;
@@ -28,10 +29,10 @@ export class Start extends Phaser.Scene {
     }
 
     create() {
-        this.background = this.add.tileSprite(640, 360, 1280, 720, 'background');
+        this.background = this.add.tileSprite(640, 360, 1280, 720, 'background').setVisible(false);
         const logo = this.add.image(640, 200, 'logo');
 
-        this.ship = this.physics.add.sprite(150, 360, 'ship');
+        this.ship = this.physics.add.sprite(150, 360, 'ship').setVisible(false);
         this.ship.setCollideWorldBounds(true);
         this.ship.setOrigin(0, 0.5);
         this.ship.anims.create({
@@ -43,34 +44,45 @@ export class Start extends Phaser.Scene {
         this.ship.play('fly');
 
         this.obstacles = this.physics.add.group();
-        this.winPoint = this.physics.add.image(1200, Phaser.Math.Between(100, 600), 'winPoint');
+        this.winPoint = this.physics.add.image(1200, Phaser.Math.Between(100, 600), 'winPoint').setVisible(false);
         this.winPoint.setImmovable(true);
         this.winPoint.setScale(0.5);
 
         this.physics.add.overlap(this.ship, this.winPoint, this.winGame, null, this);
         this.physics.add.overlap(this.ship, this.obstacles, this.hitObstacle, null, this);
 
-        this.scoreText = this.add.text(10, 10, `Name: ${this.playerName}  Score: 0`, { fontSize: '32px', fill: '#fff' });
-        this.timerText = this.add.text(10, 50, `Time: ${this.elapsedTime}s`, { fontSize: '32px', fill: '#fff' });
-        this.randomNumberText = this.add.text(10, 90, `Game Duration: `, { fontSize: '32px', fill: '#fff' });
+        this.scoreText = this.add.text(10, 10, `Name: ${this.playerName} Score: 0`, { fontSize: '32px', fill: '#fff' }).setVisible(false);
+        this.timerText = this.add.text(10, 50, `Time: ${this.elapsedTime}s`, { fontSize: '32px', fill: '#fff' }).setVisible(false);
+        this.randomNumberText = this.add.text(10, 90, `Game Duration: `, { fontSize: '32px', fill: '#fff' }).setVisible(false);
 
         this.cursors = this.input.keyboard.createCursorKeys();
 
-        this.playerName = prompt("Please enter your name:");
-        if (this.playerName && this.playerName.trim() !== "") {
+        this.loginButton = this.add.text(100, 600, 'Login', { fontSize: '32px', fill: '#fff' }).setInteractive();
+        this.registerButton = this.add.text(250, 600, 'Register', { fontSize: '32px', fill: '#fff' }).setInteractive();
+
+        this.loginButton.on('pointerdown', () => this.showLogin());
+        this.registerButton.on('pointerdown', () => this.showRegister());
+
+        this.token = localStorage.getItem('token');
+        this.playerName = localStorage.getItem('playerName');
+
+        if (this.token && this.playerName) {
             this.gameStarted = true;
-            this.scoreText.setText(`Name: ${this.playerName}  Score: 0`);
-            this.getGameDuration();
-        } else {
-            this.gameOver = true;
-            this.add.text(640, 360, 'Game Over: Name not entered!', { fontSize: '24px', fill: '#fff' }).setOrigin(0.5);
+            this.startGame();
         }
     }
 
     update() {
         if (this.gameOver || !this.gameStarted) return;
-
         this.background.tilePositionX += 2;
+        this.obstacles.getChildren().forEach((obstacle) => {
+            obstacle.x -= this.obstacleSpeed;
+            if (obstacle.x < -50) {
+                obstacle.destroy();
+                this.score += 1;
+                this.scoreText.setText(`Name: ${this.playerName} Score: ${this.score}`);
+            }
+        });
 
         if (this.cursors.up.isDown) {
             this.ship.setVelocityY(-200);
@@ -97,9 +109,9 @@ export class Start extends Phaser.Scene {
                 console.log("Banana API Data:", text);
                 const randomNumber = parseInt(text.match(/\d+/));
                 if (!isNaN(randomNumber) && randomNumber >= 5 && randomNumber <= 9) {
-                    this.gameDuration = randomNumber * 2;
+                    this.gameDuration = randomNumber * 4;
                     this.randomNumberText.setText(`Game Duration: ${this.gameDuration}`);
-                    this.startGame();
+                    this.startGameLogic();
                 } else {
                     this.getGameDuration();
                 }
@@ -111,6 +123,18 @@ export class Start extends Phaser.Scene {
     }
 
     startGame() {
+        this.loginButton.setVisible(false);
+        this.registerButton.setVisible(false);
+        this.background.setVisible(true);
+        this.ship.setVisible(true);
+        this.winPoint.setVisible(true);
+        this.scoreText.setVisible(true);
+        this.timerText.setVisible(true);
+        this.randomNumberText.setVisible(true);
+        this.getGameDuration();
+    }
+
+    startGameLogic() {
         this.obstacleTimer = this.time.addEvent({
             delay: this.obstacleSpawnRate,
             callback: this.spawnObstacle,
@@ -130,7 +154,7 @@ export class Start extends Phaser.Scene {
     handleGameOver() {
         this.gameOver = true;
         this.physics.pause();
-        this.add.text(640, 360, 'Game Over! Time expired', { fontSize: '32px', fill: '#fff' }).setOrigin(0.5);
+        this.add.text(640, 360, 'Game Over!', { fontSize: '32px', fill: '#fff' }).setOrigin(0.5);
         clearInterval(this.intervalId);
         this.obstacleTimer.remove();
     }
@@ -159,5 +183,47 @@ export class Start extends Phaser.Scene {
         this.add.text(640, 360, 'You Win!', { fontSize: '64px', fill: '#0f0' }).setOrigin(0.5);
         clearInterval(this.intervalId);
         this.obstacleTimer.remove();
+    }
+
+    showLogin() {
+        const name = prompt('Enter your name:');
+        const password = prompt('Enter your password:');
+        fetch('http://localhost:3000/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, password }),
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.auth) {
+                localStorage.setItem('token', data.token);
+                localStorage.setItem('playerName', name);
+                this.playerName = name; // set the playerName
+                this.gameStarted = true;
+                this.startGame();
+            } else {
+                alert(data.message);
+            }
+        })
+        .catch(error => {
+            alert('An error occurred during login. Please try again.');
+        });
+    }
+
+    showRegister() {
+        const name = prompt('Enter your name:');
+        const password = prompt('Enter your password:');
+        fetch('http://localhost:3000/register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, password }),
+        })
+        .then(response => response.json())
+        .then(data => {
+            alert(data.message);
+            if(data.message === "User registered successfully."){
+                this.showLogin();
+            }
+        });
     }
 }
