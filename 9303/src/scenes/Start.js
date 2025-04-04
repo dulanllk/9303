@@ -1,3 +1,4 @@
+// /Project_Folder/src/scenes/Start.js
 export class Start extends Phaser.Scene {
     constructor() {
         super('Start');
@@ -62,10 +63,13 @@ export class Start extends Phaser.Scene {
         this.loginButton.on('pointerdown', () => this.showLogin());
         this.registerButton.on('pointerdown', () => this.showRegister());
 
-        this.errorMessageText = this.add.text(640, 500, '', {
-            fontSize: '32px',
-            fill: '#f00',
-        }).setOrigin(0.5).setVisible(false);
+        this.token = localStorage.getItem('token');
+        this.playerName = localStorage.getItem('playerName');
+
+        if (this.token && this.playerName) {
+            this.gameStarted = true;
+            this.startGame();
+        }
     }
 
     update() {
@@ -150,10 +154,9 @@ export class Start extends Phaser.Scene {
     handleGameOver() {
         this.gameOver = true;
         this.physics.pause();
-        this.add.text(640, 360, 'Game Over! Time Expires', { fontSize: '32px', fill: '#fff' }).setOrigin(0.5);
+        this.add.text(640, 360, 'Game Over!', { fontSize: '32px', fill: '#fff' }).setOrigin(0.5);
         clearInterval(this.intervalId);
         this.obstacleTimer.remove();
-        this.saveScore();
     }
 
     spawnObstacle() {
@@ -172,7 +175,6 @@ export class Start extends Phaser.Scene {
         this.add.text(640, 360, 'Game Over! You hit an obstacle!', { fontSize: '64px', fill: '#f00' }).setOrigin(0.5);
         clearInterval(this.intervalId);
         this.obstacleTimer.remove();
-        this.saveScore();
     }
 
     winGame() {
@@ -181,7 +183,6 @@ export class Start extends Phaser.Scene {
         this.add.text(640, 360, 'You Win!', { fontSize: '64px', fill: '#0f0' }).setOrigin(0.5);
         clearInterval(this.intervalId);
         this.obstacleTimer.remove();
-        this.saveScore(); // Save score when the player wins
     }
 
     showLogin() {
@@ -195,26 +196,17 @@ export class Start extends Phaser.Scene {
         .then(response => response.json())
         .then(data => {
             if (data.auth) {
-                this.playerName = name;
+                localStorage.setItem('token', data.token);
+                localStorage.setItem('playerName', name);
+                this.playerName = name; // set the playerName
                 this.gameStarted = true;
-                if (data.role === 'admin') {
-                    this.showAdminPanel();
-                } else {
-                    this.startGame();
-                }
-                this.errorMessageText.setVisible(false);
+                this.startGame();
             } else {
-                    if (data.message === 'User not found.') {
-                        this.errorMessageText.setText('Invalid name.').setVisible(true);
-                    } else if (data.message === 'Invalid password.') {
-                        this.errorMessageText.setText('Invalid password.').setVisible(true);
-                    } else {
-                        this.errorMessageText.setText(data.message).setVisible(true);
-                    }
+                alert(data.message);
             }
         })
         .catch(error => {
-            this.errorMessageText.setText('An error occurred during login. Please try again.').setVisible(true);
+            alert('An error occurred during login. Please try again.');
         });
     }
 
@@ -233,46 +225,5 @@ export class Start extends Phaser.Scene {
                 this.showLogin();
             }
         });
-    }
-
-    saveScore() {
-        const name = this.playerName;
-        const score = this.score;
-
-        fetch('http://localhost:3000/saveScore', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name, score }),
-        })
-        .then(response => response.json())
-        .then(data => {
-            console.log(data.message);
-        })
-        .catch(error => {
-            console.error('Error saving score:', error);
-        });
-    }
-
-    showAdminPanel() {
-        this.scene.start('AdminScene');
-    }
-
-    fetchTopScores() {
-        fetch('http://localhost:3000/topScores')
-            .then(response => response.json())
-            .then(scores => {
-                let y = 100;
-                this.add.text(100, y-30, 'Top Scores:', { fontSize: '24px', fill: '#fff' });
-                scores.forEach(score => {
-                    this.add.text(100, y, `${score.user}: ${score.score}`, { fontSize: '18px', fill: '#fff' });
-                    y += 20;
-                });
-            })
-            .catch(error => console.error('Error fetching top scores:', error));
-    }
-
-    logout() {
-        this.logoutButton.destroy();
-        this.scene.restart();
     }
 }
